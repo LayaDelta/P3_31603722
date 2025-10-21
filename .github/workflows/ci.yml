@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x]  # Puedes usar la versión que Render use
+        node-version: [18.x]  
 
     steps:
       # 1️⃣ Clonar el código del repositorio
