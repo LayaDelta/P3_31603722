@@ -87,7 +87,6 @@ function ocultarPassword(user) {
 router.get('/', verificarToken, async (req, res) => {
   const users = await User.findAll({ order: [['id', 'ASC']] });
   
-  // Creamos un array con IDs consecutivos (solo para la respuesta)
   const sanitized = users.map((user, index) => {
     const { password, ...resto } = user.toJSON();
     return { id: index + 1, ...resto };

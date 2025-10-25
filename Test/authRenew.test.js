@@ -115,7 +115,6 @@ describe('Pruebas de autenticación y renovación de token', () => {
     expect(res.body.message).toMatch(/expirado/);
   });
 
-  // Cleanup: eliminar solo los usuarios de prueba
   afterAll(async () => {
     await User.destroy({
       where: {
