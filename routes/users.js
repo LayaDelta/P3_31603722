@@ -44,10 +44,10 @@ function ocultarPassword(user) {
  *       properties:
  *         nombreCompleto:
  *           type: string
- *           example: "Juan Laya"
+ *           example: "Juan Gomez"
  *         email:
  *           type: string
- *           example: "juan@example.com"
+ *           example: "juanG@example.com"
  *         password:
  *           type: string
  *           example: "123456"
