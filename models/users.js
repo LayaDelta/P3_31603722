@@ -1,4 +1,3 @@
-// models/user.js
 const { DataTypes } = require('sequelize');
 const bcrypt = require('bcrypt');
 

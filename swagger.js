@@ -31,7 +31,6 @@ async function setupSwagger(app) {
   let adminToken = '';
 
   try {
-    // Hacer login como admin y extraer token
     const response = await axios.post(`http://localhost:${process.env.PORT || 3000}/auth/login`, {
       email: 'admin@test.com',    
       password: '123456',          
@@ -47,7 +46,7 @@ async function setupSwagger(app) {
     console.error('Error al generar token para Swagger:', err.message);
   }
 
-  // Configurar Swagger UI con token admin
+  // Configurar Swagger UI
   app.use(
     '/api-docs',
     swaggerUi.serve,

@@ -9,7 +9,7 @@ const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth');
 
-// Configuración de Swagger desde archivo externo
+// Configuración de Swagger
 const setupSwagger = require('./swagger.js');
 
 // Crear la aplicación Express
@@ -27,10 +27,10 @@ setupSwagger(app);
 
 // Rutas base
 app.use('/', indexRouter);
-app.use('/auth', authRouter);    
-app.use('/users', usersRouter); 
+app.use('/auth', authRouter);
+app.use('/users', usersRouter);
 
-// Endpoint de información del autor
+// Endpoint de información
 app.get('/about', (req, res) => {
   res.json({
     status: 'success',
