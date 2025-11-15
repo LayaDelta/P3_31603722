@@ -3,7 +3,7 @@ const router = express.Router();
 const { User } = require('../models');
 const { verificarToken, generarToken } = require('../middlewares/auth');
 
-// Helper: eliminar password antes de enviar
+// eliminar password antes de enviar
 function ocultarPassword(user) {
   const { password, ...resto } = user.toJSON();
   return resto;

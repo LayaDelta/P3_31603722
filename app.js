@@ -4,10 +4,16 @@ const cookieParser = require('cookie-parser');
 const logger = require('morgan');
 require('dotenv').config();
 
-// Rutas principales
+// Rutas principales previas
 const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth');
+
+// NUEVAS RUTAS para categorías, productos y tags
+const categoryRouter = require('./routes/categories');
+const productRouter = require('./routes/products');
+const publicProductRouter = require('./routes/publicProducts');
+const tagRouter = require('./routes/tags');
 
 // Configuración de Swagger
 const setupSwagger = require('./swagger.js');
@@ -25,10 +31,16 @@ app.use(express.static(path.join(__dirname, 'public')));
 // Configurar Swagger
 setupSwagger(app);
 
-// Rutas base
+// Rutas base previas
 app.use('/', indexRouter);
 app.use('/auth', authRouter);
 app.use('/users', usersRouter);
+
+// NUEVAS RUTAS DEL MÓDULO DE PRODUCTOS
+app.use('/categories', categoryRouter);        // CRUD categorías
+app.use('/tags', tagRouter);                   // CRUD tags
+app.use('/products', productRouter);           // CRUD productos (privado)
+app.use('/public/products', publicProductRouter); // Productos 
 
 // Endpoint de información
 app.get('/about', (req, res) => {
@@ -38,7 +50,7 @@ app.get('/about', (req, res) => {
       nombreCompleto: 'Juan Laya',
       cedula: '31603722',
       seccion: 'Seccion 1',
-    },
+    }
   });
 });
 

@@ -4,7 +4,7 @@ const { User } = require('../models');
 const { generarToken } = require('../middlewares/auth');
 const bcrypt = require('bcrypt');
 
-// Helper: eliminar password antes de enviar
+// eliminar password antes de enviar
 function ocultarPassword(user) {
   const { password, ...resto } = user.toJSON();
   return resto;

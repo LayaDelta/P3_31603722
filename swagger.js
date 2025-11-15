@@ -30,20 +30,33 @@ const swaggerSpecs = swaggerJsdoc(swaggerOptions);
 async function setupSwagger(app) {
   let adminToken = '';
 
-  try {
-    const response = await axios.post(`http://localhost:${process.env.PORT || 3000}/auth/login`, {
-      email: 'admin@test.com',    
-      password: '123456',          
-    });
+  if (process.env.NODE_ENV === 'test') {
+    console.log('Modo Test: Omite generacion de token');
+  } else {
+    try {
+      const port = process.env.PORT || 3000;
+      const loginUrl = `http://localhost:${port}/auth/login`;
 
-    if (response.data && response.data.data && response.data.data.token) {
-      adminToken = response.data.data.token;
-      console.log('Token admin obtenido para Swagger');
-    } else {
-      console.error('No se encontró token en la respuesta de login');
+      const response = await axios.post(loginUrl, {
+        email: 'admin@test.com',
+        password: '123456',
+      });
+
+      adminToken = response?.data?.data?.token || '';
+
+      if (adminToken) {
+        console.log('✅ Token admin obtenido para Swagger');
+      } else {
+        console.warn('⚠️ No se encontró token en la respuesta de login');
+      }
+    } catch (err) {
+      const msg =
+        err.response?.data?.message ||
+        err.code ||
+        err.message ||
+        'Error desconocido';
+      console.warn('⚠️ Swagger se cargará sin token:', msg);
     }
-  } catch (err) {
-    console.error('Error al generar token para Swagger:', err.message);
   }
 
   // Configurar Swagger UI
@@ -56,8 +69,12 @@ async function setupSwagger(app) {
         authAction: {
           bearerAuth: {
             name: 'bearerAuth',
-            schema: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-            value: `${adminToken}`,
+            schema: {
+              type: 'http',
+              scheme: 'bearer',
+              bearerFormat: 'JWT',
+            },
+            value: adminToken ? `${adminToken}` : '',
           },
         },
       },
