@@ -26,7 +26,7 @@ class ProductController {
             return res.status(201).json(result);
 
         } catch (error) {
-            console.error("🔥 ERROR AL CREAR PRODUCTO:", error);
+            console.error("ERROR AL CREAR PRODUCTO:", error);
             return res.status(500).json({
                 status: "error",
                 message: "Error al crear el producto"

@@ -3,7 +3,7 @@ const ProductQueryBuilder = require('../builders/productQueryBuilder');
 
 class PublicProductController {
 
-  /** Listado público con filtros, paginación y relaciones */
+  //Listado público con filtros, paginación y relaciones
   async list(req, res) {
     try {
       // Extraer filtros desde la query
@@ -73,7 +73,7 @@ class PublicProductController {
     }
   }
 
-  /** Detalle público con Self-Healing URL */
+  // Detalle público con Self-Healing URL
   async getPublic(req, res) {
     try {
       const { id, slug } = req.params;

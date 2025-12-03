@@ -1,6 +1,5 @@
 const BaseRepository = require('./baseRepository');
 const { Product, Category, Tag } = require('../models');
-const ProductQueryBuilder = require('../builders/productQueryBuilder');
 const { Op } = require('sequelize');
 
 class ProductRepository extends BaseRepository {
@@ -8,7 +7,7 @@ class ProductRepository extends BaseRepository {
     super(Product);
   }
 
-  /** Obtener producto por ID con relaciones (Category + Tags) */
+  // Obtener producto por ID con relaciones (Category + Tags) 
   async findByIdWithRelations(id) {
     return await Product.findOne({
       where: { id },
@@ -19,7 +18,7 @@ class ProductRepository extends BaseRepository {
     });
   }
 
-  /** Verifica si existe un producto por slug */
+  // Verifica si existe un producto por slug 
   async slugExists(slug, excludeId = null) {
     return await Product.findOne({
       where: excludeId
@@ -28,7 +27,7 @@ class ProductRepository extends BaseRepository {
     });
   }
 
-  /** Búsqueda avanzada usando QueryBuilder */
+  // Búsqueda avanzada usando QueryBuilder
   async search(query) {
     return await Product.findAndCountAll({
       ...query,
@@ -39,12 +38,12 @@ class ProductRepository extends BaseRepository {
     });
   }
 
-  /** Consultas avanzadas usando query-builder completo */
+  // Consultas avanzadas usando query-builder completo 
   async queryAdvanced(query) {
     return await Product.findAndCountAll(query);
   }
 
-  /** Asignar categoría */
+  // Asignar categoría 
   async assignCategory(productId, categoryId) {
     const product = await Product.findByPk(productId);
     if (!product) return null;
@@ -54,7 +53,7 @@ class ProductRepository extends BaseRepository {
     return product;
   }
 
-  /** Asignar tags (Many-to-Many) */
+  // Asignar tag  
   async assignTags(productId, tagIds) {
     const product = await Product.findByPk(productId);
     if (!product) return null;
@@ -64,10 +63,9 @@ class ProductRepository extends BaseRepository {
     return product;
   }
 
-  /**
-   *  Crear producto con categoría y tags asociados
-   * @param {Object} data 
-   */
+  
+  // Crear producto con categoría y tags asociados 
+
   async createWithRelations(data) {
     const { categoryId, tagIds = [], ...productData } = data;
 

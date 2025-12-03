@@ -1,7 +1,6 @@
 class BaseRepository {
-  /**
-   * Recibe el modelo de Sequelize que manejará este repositorio.
-   */
+  // Recibe el modelo de Sequelize que manejará este repositorio.
+
   constructor(model) {
     if (!model) {
       throw new Error("BaseRepository requiere un modelo válido.");

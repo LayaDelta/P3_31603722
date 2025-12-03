@@ -45,9 +45,9 @@ async function setupSwagger(app) {
       adminToken = response?.data?.data?.token || '';
 
       if (adminToken) {
-        console.log('✅ Token admin obtenido para Swagger');
+        console.log(' Token admin obtenido para Swagger');
       } else {
-        console.warn('⚠️ No se encontró token en la respuesta de login');
+        console.warn(' No se encontró token en la respuesta de login');
       }
     } catch (err) {
       const msg =
@@ -55,7 +55,7 @@ async function setupSwagger(app) {
         err.code ||
         err.message ||
         'Error desconocido';
-      console.warn('⚠️ Swagger se cargará sin token:', msg);
+      console.warn(' Swagger se cargará sin token:', msg);
     }
   }
 

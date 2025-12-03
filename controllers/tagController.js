@@ -2,10 +2,8 @@ const TagRepository = require('../repositories/tagRepository');
 
 class TagController {
 
-    /**
-     * Crear un nuevo tag
-     * POST /tags
-     */
+    // Crear un nuevo tag POST /tags
+     
     async create(req, res) {
         try {
             const { name } = req.body;
@@ -44,10 +42,8 @@ class TagController {
         }
     }
 
-    /**
-     * Obtener todos los tags
-     * GET /tags
-     */
+    // Obtener todos los tags GET /tags
+     
     async findAll(req, res) {
         try {
             const tags = await TagRepository.findAll();
@@ -66,10 +62,7 @@ class TagController {
         }
     }
 
-    /**
-     * Obtener tag por ID
-     * GET /tags/:id
-     */
+    //Obtener tag por ID  GET /tags/:id
     async findById(req, res) {
         try {
             const { id } = req.params;
@@ -98,10 +91,8 @@ class TagController {
         }
     }
 
-    /**
-     * Actualizar un tag
-     * PUT /tags/:id
-     */
+    // Actualizar un tag PUT /tags/:id
+   
     async update(req, res) {
         try {
             const { id } = req.params;
@@ -149,10 +140,7 @@ class TagController {
         }
     }
 
-    /**
-     * Eliminar un tag
-     * DELETE /tags/:id
-     */
+    //Eliminar un tag  DELETE /tags/:id
     async delete(req, res) {
         try {
             const { id } = req.params;
