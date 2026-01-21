@@ -1,149 +1,136 @@
+// controllers/productController.js (SIMPLIFICADO)
 const ProductService = require('../services/productService');
 
 class ProductController {
-
-    /** Crear un nuevo producto */
-    async create(req, res) {
-        try {
-            const { name, price, categoryId } = req.body;
-
-            // Validación mínima: campos obligatorios
-            if (!name || !price || !categoryId) {
-                return res.status(400).json({
-                    status: "fail",
-                    message: "Los campos name, price y categoryId son obligatorios"
-                });
-            }
-
-            // Llamar al servicio para crear
-            const result = await ProductService.create(req.body);
-
-            // Validación de respuesta del servicio
-            if (result.status !== 'success') {
-                return res.status(400).json(result);
-            }
-
-            return res.status(201).json(result);
-
-        } catch (error) {
-            console.error("ERROR AL CREAR PRODUCTO:", error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al crear el producto"
-            });
-        }
+  
+  /** Crear producto (privado) */
+  async create(req, res) {
+    try {
+      const result = await ProductService.create(req.body);
+      
+      if (result.status === 'success') {
+        return res.status(201).json(result);
+      }
+      
+      // Manejar errores específicos
+      const statusCode = result.message.includes('no existe') ? 404 : 400;
+      return res.status(statusCode).json(result);
+      
+    } catch (error) {
+      console.error("ERROR AL CREAR PRODUCTO:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error interno al crear el producto"
+      });
     }
+  }
 
-    /** Obtener producto por ID */
-    async getById(req, res) {
-        try {
-            const { id } = req.params;
+  /** Obtener producto por ID (privado) */
+  async getById(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await ProductService.findById(id);
 
-            // Consultar en la base de datos
-            const result = await ProductService.findById(id);
+      if (result.status !== 'success') {
+        return res.status(404).json(result);
+      }
 
-            // Si no existe → 404
-            if (result.status !== 'success') {
-                return res.status(404).json(result);
-            }
-
-            return res.json(result);
-
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al obtener el producto"
-            });
-        }
+      return res.json(result);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error al obtener el producto"
+      });
     }
+  }
 
-    /** Actualizar un producto */
-    async update(req, res) {
-        try {
-            const { id } = req.params;
+  /** Actualizar producto (privado) */
+  async update(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await ProductService.update(id, req.body);
 
-            const result = await ProductService.update(id, req.body);
+      if (result.status !== 'success') {
+        const statusCode = result.message.includes('no existe') ? 404 : 400;
+        return res.status(statusCode).json(result);
+      }
 
-            // Error de validación o actualización
-            if (result.status !== 'success') {
-                return res.status(400).json(result);
-            }
-
-            return res.json(result);
-
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al actualizar el producto"
-            });
-        }
+      return res.json(result);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error al actualizar el producto"
+      });
     }
+  }
 
-    /** Eliminar un producto */
-    async delete(req, res) {
-        try {
-            const { id } = req.params;
+  /** Eliminar producto (privado) */
+  async delete(req, res) {
+    try {
+      const { id } = req.params;
+      const result = await ProductService.delete(id);
 
-            const result = await ProductService.delete(id);
+      if (result.status !== 'success') {
+        return res.status(404).json(result);
+      }
 
-            // Si no se encontró → 404
-            if (result.status !== 'success') {
-                return res.status(404).json(result);
-            }
-
-            return res.json(result);
-
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al eliminar el producto"
-            });
-        }
+      return res.json(result);
+    } catch (error) {
+      console.error(error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error al eliminar el producto"
+      });
     }
+  }
 
-    /** Listado público con filtros de búsqueda */
-    async list(req, res) {
-        try {
-            // Recibe filtros desde req.query
-            const result = await ProductService.publicSearch(req.query);
-            return res.json(result);
+  /** Listado público con filtros */
+  async list(req, res) {
+    try {
+      const result = await ProductService.publicSearch(req.query);
+      
+      if (result.status !== 'success') {
+        return res.status(400).json(result);
+      }
 
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al obtener listado de productos"
-            });
-        }
+      return res.json(result);
+    } catch (error) {
+      console.error("Error en listado público:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error al obtener listado de productos"
+      });
     }
+  }
 
-    /** Obtener producto público (SEO + Self-Healing URL) */
-    async getPublic(req, res) {
-        try {
-            const { id, slug } = req.params;
+  /** Búsqueda específica */
+  async search(req, res) {
+    try {
+      const { id, tag, category, keyword, exact, brand, minPrice, maxPrice, limit } = req.query;
+      
+      const result = await ProductService.searchByCriteria({
+        id,
+        tag,
+        category,
+        keyword,
+        exactMatch: exact === 'true',
+        brand,
+        minPrice,
+        maxPrice,
+        limit
+      });
 
-            // Buscar producto y verificar si el slug correcto coincide
-            const result = await ProductService.publicFindByIdAndSlug(id, slug);
-
-            // Si el slug está mal → redirección permanente (301)
-            if (result.redirect) {
-                return res.redirect(301, result.correctUrl);
-            }
-
-            return res.json(result);
-
-        } catch (error) {
-            console.error(error);
-            return res.status(500).json({
-                status: "error",
-                message: "Error al obtener producto público"
-            });
-        }
+      return res.json(result);
+    } catch (error) {
+      console.error("Error en búsqueda específica:", error);
+      return res.status(500).json({
+        status: "error",
+        message: "Error en la búsqueda"
+      });
     }
-
+  }
 }
 
 module.exports = new ProductController();
