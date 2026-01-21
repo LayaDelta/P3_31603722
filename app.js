@@ -61,7 +61,7 @@ app.get('/ping', (req, res) => res.status(200).end());
 const { sequelize } = require('./models');
 if (process.env.NODE_ENV !== 'test') {
   sequelize
-    .sync({ alter: true })
+    .sync({ alter: false })
     .then(() => console.log('Base de datos SQLite sincronizada'))
     .catch((err) => console.error('Error al sincronizar la base de datos:', err));
 }

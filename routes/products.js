@@ -3,6 +3,7 @@ const router = express.Router();
 const productController = require('../controllers/productController');
 const { verificarToken, generarToken } = require('../middlewares/auth');
 
+//Correccion a realizar: Sistema  de flitrado por Categoria, Tags, paginacion y busqueda de productos debe aislar el producto siempre y cuando cumpla con los parametros pedidos en el filtro
 /**
  * @swagger
  * tags:

@@ -9,7 +9,7 @@ let token;
 let baseUser;
 
 beforeAll(async () => {
-  await sequelize.sync({ alter: true });
+  await sequelize.sync({ alter: false });
 
   // Usuario base para autenticación
   baseUser = await User.findOne({ where: { email: 'admin@test.com' } });
