@@ -1,4 +1,4 @@
-// routes/products.js
+// routes/products.js - SOLUCIÓN 2 IMPLEMENTADA
 const express = require('express');
 const router = express.Router();
 const productController = require('../controllers/productController');
@@ -43,6 +43,14 @@ const { verificarToken } = require('../middlewares/auth');
  *         slug:
  *           type: string
  *           example: "smartphone-avanzado"
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           example: "2024-01-15T10:30:00.000Z"
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *           example: "2024-01-15T10:30:00.000Z"
  *         category:
  *           type: object
  *           properties:
@@ -90,6 +98,27 @@ const { verificarToken } = require('../middlewares/auth');
  *           items:
  *             type: integer
  *           example: [1, 3]
+ *     ApiResponse:
+ *       type: object
+ *       properties:
+ *         status:
+ *           type: string
+ *           enum: [success, error]
+ *           example: "success"
+ *         message:
+ *           type: string
+ *           example: "Operación exitosa"
+ *         data:
+ *           type: object
+ *     ApiError:
+ *       type: object
+ *       properties:
+ *         status:
+ *           type: string
+ *           example: "error"
+ *         message:
+ *           type: string
+ *           example: "Error en la operación"
  */
 
 // 🔐 ENDPOINTS PRIVADOS (requieren autenticación)
@@ -98,8 +127,8 @@ const { verificarToken } = require('../middlewares/auth');
  * @swagger
  * /products:
  *   post:
- *     summary: Crear un nuevo producto
- *     description: Crea un nuevo producto en el sistema (requiere autenticación)
+ *     summary: Crear un nuevo producto (PRIVADO)
+ *     description: Crea un nuevo producto en el sistema - REQUIERE autenticación con token Bearer
  *     tags: [Productos]
  *     security:
  *       - bearerAuth: []
@@ -123,63 +152,26 @@ const { verificarToken } = require('../middlewares/auth');
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "success"
- *                 data:
- *                   $ref: '#/components/schemas/Product'
+ *               $ref: '#/components/schemas/ApiResponse'
  *       400:
  *         description: Error de validación o datos inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
  *       401:
  *         description: No autorizado - Token inválido o expirado
+ *       500:
+ *         description: Error interno del servidor
  */
 router.post('/', verificarToken, productController.create);
 
 /**
  * @swagger
  * /products/{id}:
- *   get:
- *     summary: Obtener producto por ID
- *     description: Obtiene un producto específico por su ID (requiere autenticación)
- *     tags: [Productos]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *           example: 1
- *         description: ID del producto
- *     responses:
- *       200:
- *         description: Producto encontrado
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "success"
- *                 data:
- *                   $ref: '#/components/schemas/Product'
- *       401:
- *         description: No autorizado
- *       404:
- *         description: Producto no encontrado
- */
-router.get('/:id', verificarToken, productController.getById);
-
-/**
- * @swagger
- * /products/{id}:
  *   put:
- *     summary: Actualizar producto existente
- *     description: Actualiza los datos de un producto existente (requiere autenticación)
+ *     summary: Actualizar producto existente (PRIVADO)
+ *     description: Actualiza los datos de un producto existente - REQUIERE autenticación
  *     tags: [Productos]
  *     security:
  *       - bearerAuth: []
@@ -197,27 +189,13 @@ router.get('/:id', verificarToken, productController.getById);
  *         application/json:
  *           schema:
  *             $ref: '#/components/schemas/ProductInput'
- *           example:
- *             name: "Laptop Gaming Pro Actualizada"
- *             description: "Laptop actualizada con mejores especificaciones"
- *             price: 1399.99
- *             stock: 15
- *             brand: "GamerTech Pro"
- *             categoryId: 1
- *             tagIds: [1, 2, 3]
  *     responses:
  *       200:
  *         description: Producto actualizado exitosamente
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "success"
- *                 data:
- *                   $ref: '#/components/schemas/Product'
+ *               $ref: '#/components/schemas/ApiResponse'
  *       400:
  *         description: Error de validación
  *       401:
@@ -231,8 +209,8 @@ router.put('/:id', verificarToken, productController.update);
  * @swagger
  * /products/{id}:
  *   delete:
- *     summary: Eliminar producto
- *     description: Elimina un producto del sistema (requiere autenticación)
+ *     summary: Eliminar producto (PRIVADO)
+ *     description: Elimina un producto del sistema - REQUIERE autenticación
  *     tags: [Productos]
  *     security:
  *       - bearerAuth: []
@@ -250,14 +228,7 @@ router.put('/:id', verificarToken, productController.update);
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "success"
- *                 message:
- *                   type: string
- *                   example: "Producto eliminado correctamente"
+ *               $ref: '#/components/schemas/ApiResponse'
  *       401:
  *         description: No autorizado
  *       404:
@@ -271,8 +242,8 @@ router.delete('/:id', verificarToken, productController.delete);
  * @swagger
  * /products:
  *   get:
- *     summary: Listar productos con filtros avanzados
- *     description: Obtiene una lista paginada de productos con múltiples opciones de filtrado
+ *     summary: Listar productos con filtros avanzados (PÚBLICO)
+ *     description: Obtiene una lista paginada de productos con múltiples opciones de filtrado - NO requiere autenticación
  *     tags: [Productos]
  *     parameters:
  *       - in: query
@@ -374,6 +345,12 @@ router.delete('/:id', verificarToken, productController.delete);
  *                       type: array
  *                       items:
  *                         $ref: '#/components/schemas/Product'
+ *       400:
+ *         description: Parámetros de filtro inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
  *       500:
  *         description: Error interno del servidor
  */
@@ -381,10 +358,43 @@ router.get('/', productController.list);
 
 /**
  * @swagger
+ * /products/{id}:
+ *   get:
+ *     summary: Obtener producto por ID (PÚBLICO)
+ *     description: Obtiene un producto específico por su ID - NO requiere autenticación
+ *     tags: [Productos]
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *           example: 1
+ *         description: ID del producto
+ *     responses:
+ *       200:
+ *         description: Producto encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiResponse'
+ *       404:
+ *         description: Producto no encontrado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       500:
+ *         description: Error interno del servidor
+ */
+router.get('/:id', productController.getById);
+
+/**
+ * @swagger
  * /products/search:
  *   get:
- *     summary: Búsqueda específica de productos
- *     description: Búsqueda avanzada de productos por múltiples criterios
+ *     summary: Búsqueda específica de productos (PÚBLICO)
+ *     description: Búsqueda avanzada de productos por múltiples criterios - NO requiere autenticación
  *     tags: [Productos]
  *     parameters:
  *       - in: query
@@ -467,6 +477,14 @@ router.get('/', productController.list);
  *                       type: array
  *                       items:
  *                         $ref: '#/components/schemas/Product'
+ *       400:
+ *         description: Parámetros de búsqueda inválidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ApiError'
+ *       500:
+ *         description: Error interno del servidor
  */
 router.get('/search', productController.search);
 

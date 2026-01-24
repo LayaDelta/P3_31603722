@@ -1,71 +1,55 @@
-// services/productService.js (SIMPLIFICADO CON HOOKS)
-const { Category, Tag } = require('../models');
+// services/productService.js - VERSIÓN COMPLETA CON VALIDACIÓN ANTI-DUPLICADOS
+const { Category, Tag, ProductTag } = require('../models');
 const ProductRepository = require('../repositories/productRepository');
 const CategoryRepository = require('../repositories/categoryRepository');
 const TagRepository = require('../repositories/tagRepository');
-const { defaultAntiDuplicate } = require('../utils/antiDuplicateSystem');
 const slugify = require('slugify');
 const { Op } = require('sequelize');
 
 class ProductService {
 
-  // Instancia configurada del sistema anti-duplicados
-  static antiDuplicate = defaultAntiDuplicate;
-
-  // Configurar sistema anti-duplicados (opcional)
-  static configureAntiDuplicate(config) {
-    this.antiDuplicate = this.antiDuplicate.config(config);
-  }
-
-  // Genera un slug único basado en el nombre
-  static async generateUniqueSlug(name, productId = null) {
-    if (!name) return null;
-
-    let baseSlug = slugify(name, { lower: true, strict: true });
-    let slug = baseSlug;
-    let counter = 1;
-
-    // Verificar con el sistema anti-duplicados
-    const checkResult = await this.antiDuplicate.checkSlugDuplicate({ slug }, productId);
-    
-    while (checkResult && (!productId || checkResult.existingId !== productId)) {
-      slug = `${baseSlug}-${counter}`;
-      const newCheck = await this.antiDuplicate.checkSlugDuplicate({ slug }, productId);
-      if (!newCheck || (productId && newCheck.existingId === productId)) break;
-      counter++;
-      
-      if (counter > 100) {
-        slug = `${baseSlug}-${Date.now()}`;
-        break;
-      }
-    }
-
-    return slug;
-  }
-
-  // Crear un nuevo producto
+  // Crear un nuevo producto CON VALIDACIÓN ANTI-DUPLICADOS
   static async create(data) {
     if (!data || Object.keys(data).length === 0) {
-      return { status: 'fail', message: 'No se enviaron datos para crear el producto' };
+      return { status: 'error', message: 'No se enviaron datos para crear el producto' };
     }
 
     const { name, price, categoryId, tagIds = [] } = data;
 
     // Validación obligatoria
     if (!name || !price || !categoryId) {
-      return { status: 'fail', message: 'Los campos name, price y categoryId son obligatorios' };
+      return { status: 'error', message: 'Los campos name, price y categoryId son obligatorios' };
     }
 
-    // 🔍 VALIDAR DUPLICADOS CON EL SISTEMA
-    const duplicateValidation = await this.antiDuplicate.beforeCreate(data);
-    if (!duplicateValidation.isValid) {
-      return duplicateValidation.error;
+    // 🔍 VALIDACIÓN ANTI-DUPLICADOS: Verificar si ya existe un producto con mismo nombre en misma categoría
+    try {
+      const existingProduct = await ProductRepository.findDuplicate(name, categoryId);
+      
+      if (existingProduct) {
+        const categoryName = existingProduct.category?.name || 'esta categoría';
+        return { 
+          status: 'error', 
+          message: `Ya existe un producto con el nombre "${name}" en ${categoryName}`,
+          data: {
+            duplicate: {
+              id: existingProduct.id,
+              name: existingProduct.name,
+              categoryId: existingProduct.categoryId,
+              categoryName: categoryName
+            },
+            suggestion: `Usa un nombre diferente o modifica el producto existente (ID: ${existingProduct.id})`
+          }
+        };
+      }
+    } catch (error) {
+      console.error('Error verificando duplicados:', error);
+      // Continuar aunque falle la verificación de duplicados
     }
 
     // Validar categoría
     const categoryExists = await CategoryRepository.existsById(categoryId);
     if (!categoryExists) {
-      return { status: 'fail', message: 'La categoría no existe' };
+      return { status: 'error', message: 'La categoría no existe' };
     }
 
     // Validar tags
@@ -75,47 +59,59 @@ class ProductService {
         const existingTagIds = existingTags.map(tag => tag.id);
         const missingTagIds = tagIds.filter(id => !existingTagIds.includes(id));
         return { 
-          status: 'fail', 
+          status: 'error', 
           message: `Los siguientes tags no existen: ${missingTagIds.join(', ')}` 
         };
       }
     }
 
-    // Generar slug único
-    const slug = await this.generateUniqueSlug(name);
+    // Validar precio
+    if (parseFloat(price) <= 0) {
+      return { status: 'error', message: 'El precio debe ser mayor a 0' };
+    }
+
+    // Validar stock
+    if (data.stock !== undefined && parseInt(data.stock) < 0) {
+      return { status: 'error', message: 'El stock no puede ser negativo' };
+    }
 
     try {
       // Crear producto con relaciones
-      const product = await ProductRepository.createWithTags({
-        name: data.name,
-        description: data.description,
-        price: data.price,
-        stock: data.stock || 0,
-        brand: data.brand,
-        categoryId: data.categoryId,
-        slug,
-        tagIds: tagIds
-      });
-
-      // Obtener producto completo con relaciones
-      const productWithRelations = await ProductRepository.findByIdWithRelations(product.id);
+      const product = await ProductRepository.createWithTags(data);
 
       return { 
         status: 'success', 
-        data: { product: productWithRelations },
+        data: { product },
         message: 'Producto creado exitosamente'
       };
     } catch (error) {
       console.error('Error al crear producto:', error);
       
-      // Si hay error de constraint, usar sistema anti-duplicados para sugerir solución
+      // Manejar errores específicos
       if (error.name === 'SequelizeUniqueConstraintError') {
-        const uniqueName = await this.antiDuplicate.generateUniqueName(name, categoryId);
-        return { 
-          status: 'fail', 
-          message: 'Ya existe un producto con esos datos',
-          suggestion: `Intenta con: "${uniqueName}"`,
-          autoFix: { name: uniqueName }
+        if (error.errors?.[0]?.path === 'sku') {
+          return { 
+            status: 'error', 
+            message: 'Error al generar SKU único. Intenta nuevamente.'
+          };
+        }
+        if (error.errors?.[0]?.path === 'slug') {
+          // Si hay error de slug único, sugerir nombre alternativo
+          const suggestionName = await this.generateAlternativeName(name, categoryId);
+          return { 
+            status: 'error', 
+            message: 'El nombre del producto ya existe o es muy similar',
+            suggestion: `Intenta con: "${suggestionName}"`,
+            autoFix: { name: suggestionName }
+          };
+        }
+      }
+      
+      // Manejar error de duplicado desde el repository
+      if (error.message.includes('Ya existe un producto')) {
+        return {
+          status: 'error',
+          message: error.message
         };
       }
       
@@ -127,33 +123,67 @@ class ProductService {
     }
   }
 
-  // Actualizar producto
+  // Actualizar producto CON VALIDACIÓN ANTI-DUPLICADOS
   static async update(id, data) {
-    if (!id) return { status: 'fail', message: 'ID no proporcionado' };
+    if (!id) return { status: 'error', message: 'ID no proporcionado' };
     if (!data || Object.keys(data).length === 0) {
-      return { status: 'fail', message: 'No se enviaron datos para actualizar' };
+      return { status: 'error', message: 'No se enviaron datos para actualizar' };
     }
 
     // Verificar si el producto existe
     const productExists = await ProductRepository.existsById(id);
     if (!productExists) {
-      return { status: 'fail', message: 'Producto no encontrado' };
+      return { status: 'error', message: 'Producto no encontrado' };
     }
 
-    // Obtener producto actual
-    const currentProduct = await ProductRepository.findById(id);
-
-    // Si cambia el nombre, actualizar slug
-    if (data.name && data.name !== currentProduct.name) {
-      data.slug = await this.generateUniqueSlug(data.name, id);
+    // 🔍 VALIDACIÓN ANTI-DUPLICADOS: Verificar si el nuevo nombre crea duplicado
+    if (data.name || data.categoryId) {
+      try {
+        // Obtener producto actual para comparar
+        const currentProduct = await ProductRepository.findById(id);
+        
+        const nameToCheck = data.name || currentProduct.name;
+        const categoryIdToCheck = data.categoryId || currentProduct.categoryId;
+        
+        const duplicate = await ProductRepository.findDuplicate(nameToCheck, categoryIdToCheck, id);
+        
+        if (duplicate) {
+          const categoryName = duplicate.category?.name || 'esta categoría';
+          return { 
+            status: 'error', 
+            message: `Ya existe un producto con el nombre "${nameToCheck}" en ${categoryName}`,
+            data: {
+              duplicate: {
+                id: duplicate.id,
+                name: duplicate.name,
+                categoryId: duplicate.categoryId,
+                categoryName: categoryName
+              },
+              suggestion: `Usa un nombre diferente o modifica el producto existente (ID: ${duplicate.id})`
+            }
+          };
+        }
+      } catch (error) {
+        console.error('Error verificando duplicados en update:', error);
+      }
     }
 
     // Validar categoría si viene
     if (data.categoryId) {
       const categoryExists = await CategoryRepository.existsById(data.categoryId);
       if (!categoryExists) {
-        return { status: 'fail', message: 'La categoría no existe' };
+        return { status: 'error', message: 'La categoría no existe' };
       }
+    }
+
+    // Validar precio si viene
+    if (data.price !== undefined && parseFloat(data.price) <= 0) {
+      return { status: 'error', message: 'El precio debe ser mayor a 0' };
+    }
+
+    // Validar stock si viene
+    if (data.stock !== undefined && parseInt(data.stock) < 0) {
+      return { status: 'error', message: 'El stock no puede ser negativo' };
     }
 
     // Validar tags si vienen
@@ -164,45 +194,42 @@ class ProductService {
           const existingTagIds = existingTags.map(tag => tag.id);
           const missingTagIds = data.tagIds.filter(id => !existingTagIds.includes(id));
           return { 
-            status: 'fail', 
+            status: 'error', 
             message: `Los siguientes tags no existen: ${missingTagIds.join(', ')}` 
           };
         }
       }
     }
 
-    // 🔍 VALIDAR DUPLICADOS CON EL SISTEMA
-    const duplicateValidation = await this.antiDuplicate.beforeUpdate(id, data);
-    if (!duplicateValidation.isValid) {
-      return duplicateValidation.error;
-    }
-
     try {
       // Actualizar producto con tags
       const updatedProduct = await ProductRepository.updateWithTags(id, data);
-      const productWithRelations = await ProductRepository.findByIdWithRelations(id);
 
       return { 
         status: 'success', 
-        data: { product: productWithRelations },
+        data: { product: updatedProduct },
         message: 'Producto actualizado exitosamente'
       };
     } catch (error) {
       console.error('Error al actualizar producto:', error);
       
       if (error.name === 'SequelizeUniqueConstraintError') {
-        // Sugerir nombre único usando el sistema
-        const uniqueName = await this.antiDuplicate.generateUniqueName(
-          data.name || currentProduct.name, 
-          data.categoryId || currentProduct.categoryId, 
-          id
-        );
         return { 
-          status: 'fail', 
-          message: 'No se puede actualizar: conflicto de datos',
-          suggestion: `Intenta con: "${uniqueName}"`,
-          autoFix: { name: uniqueName }
+          status: 'error', 
+          message: 'No se puede actualizar: el nombre del producto ya existe'
         };
+      }
+      
+      // Manejar error de duplicado desde el repository
+      if (error.message.includes('Ya existe un producto')) {
+        return {
+          status: 'error',
+          message: error.message
+        };
+      }
+      
+      if (error.message.includes('no encontrado')) {
+        return { status: 'error', message: error.message };
       }
       
       return { 
@@ -213,55 +240,52 @@ class ProductService {
     }
   }
 
-  // Buscar o crear producto (usando sistema anti-duplicados)
-  static async findOrCreate(productData) {
-    const { name, categoryId } = productData;
-    
-    if (!name || !categoryId) {
-      return { status: 'fail', message: 'Nombre y categoría son requeridos' };
+  // Obtener producto por ID
+  static async findById(id) {
+    if (!id) return { status: 'error', message: 'ID no proporcionado' };
+
+    const product = await ProductRepository.findByIdWithRelations(id);
+    if (!product) {
+      return { status: 'error', message: 'Producto no encontrado' };
+    }
+
+    return { status: 'success', data: { product } };
+  }
+
+  // Obtener producto por slug
+  static async findBySlug(slug) {
+    if (!slug) return { status: 'error', message: 'Slug no proporcionado' };
+
+    const product = await ProductRepository.findBySlug(slug);
+    if (!product) {
+      return { status: 'error', message: 'Producto no encontrado' };
+    }
+
+    return { status: 'success', data: { product } };
+  }
+
+  // Eliminar producto
+  static async delete(id) {
+    if (!id) return { status: 'error', message: 'ID no proporcionado' };
+
+    const productExists = await ProductRepository.existsById(id);
+    if (!productExists) {
+      return { status: 'error', message: 'Producto no encontrado' };
     }
 
     try {
-      // Primero verificar si ya existe usando el sistema
-      const duplicateCheck = await this.antiDuplicate.checkNameCategoryDuplicate(
-        { name, categoryId }
-      );
-
-      if (duplicateCheck) {
-        // Producto encontrado, devolverlo
-        const existingProduct = await ProductRepository.findByIdWithRelations(duplicateCheck.existingId);
-        return {
-          status: 'success',
-          data: { product: existingProduct },
-          created: false,
-          message: 'Producto encontrado (evitado duplicado)',
-          duplicatePrevented: true
-        };
-      }
-
-      // Si no existe, crear con validación automática
-      const createResult = await this.create(productData);
-      
-      if (createResult.status === 'success') {
-        return {
-          ...createResult,
-          created: true,
-          duplicatePrevented: false
-        };
-      }
-      
-      return createResult;
-
+      await ProductRepository.delete(id);
+      return { status: 'success', message: 'Producto eliminado exitosamente' };
     } catch (error) {
-      console.error('Error en findOrCreate:', error);
+      console.error('Error al eliminar producto:', error);
       return { 
         status: 'error', 
-        message: 'Error en búsqueda/creación' 
+        message: 'Error al eliminar el producto' 
       };
     }
   }
 
-  // BÚSQUEDA PÚBLICA CON FILTRADO (usando sistema anti-duplicados)
+  // Búsqueda pública con filtros
   static async publicSearch(filters = {}) {
     try {
       const {
@@ -273,47 +297,106 @@ class ProductService {
         brand,
         minPrice,
         maxPrice,
+        // sector, // Temporalmente comentado hasta que exista la columna
         sortBy = 'createdAt',
-        sortOrder = 'DESC',
-        excludeDuplicates = true // Usar sistema anti-duplicados
+        sortOrder = 'DESC'
       } = filters;
 
       // Construir consulta base
-      const query = {
-        where: {},
-        include: [],
-        order: [[sortBy, sortOrder.toUpperCase()]],
-        distinct: true
-      };
-
-      // ... (todo el código de filtrado permanece igual) ...
-
-      // Obtener productos
-      const products = await ProductRepository.queryAdvanced(query);
-
-      // 🔍 FILTRAR DUPLICADOS USANDO EL SISTEMA
-      let finalProducts = products;
-      let duplicatesRemoved = 0;
+      const where = {};
+      const include = [];
       
-      if (excludeDuplicates) {
-        const filterResult = this.antiDuplicate.filterDuplicatesFromResults(products, 'name', 'categoryId');
-        finalProducts = filterResult.filtered;
-        duplicatesRemoved = filterResult.removed;
+      // Paginación
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      // Filtro por categoría
+      if (category) {
+        include.push({
+          model: Category,
+          as: 'category',
+          where: { id: parseInt(category) }
+        });
+      } else {
+        include.push({ model: Category, as: 'category' });
+      }
+      
+      // Filtro por tags
+      if (tags) {
+        const tagIds = tags.split(',').map(id => parseInt(id.trim()));
+        include.push({
+          model: Tag,
+          as: 'tags',
+          through: { model: ProductTag, attributes: [] },
+          where: { id: tagIds },
+          required: true
+        });
+      } else {
+        include.push({ 
+          model: Tag, 
+          as: 'tags', 
+          through: { model: ProductTag, attributes: [] } 
+        });
+      }
+      
+      // Filtro por búsqueda
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } },
+          { brand: { [Op.like]: `%${search}%` } }
+        ];
+      }
+      
+      // Filtro por marca
+      if (brand) {
+        where.brand = { [Op.like]: `%${brand}%` };
+      }
+      
+      // Filtro por sector (TEMPORALMENTE COMENTADO)
+      // if (sector) {
+      //   where.sector = sector;
+      // }
+      
+      // Filtro por precio
+      if (minPrice || maxPrice) {
+        where.price = {};
+        if (minPrice) where.price[Op.gte] = parseFloat(minPrice);
+        if (maxPrice) where.price[Op.lte] = parseFloat(maxPrice);
       }
 
-      const totalPages = Math.ceil(products.length / limit);
+      // Obtener total para paginación
+      const total = await ProductRepository.countWithFilters({ where, include, distinct: true });
+      
+      // Obtener productos con paginación
+      const products = await ProductRepository.queryAdvanced({
+        where,
+        include,
+        order: [[sortBy, sortOrder.toUpperCase()]],
+        limit: parseInt(limit),
+        offset,
+        distinct: true
+      });
+
+      const totalPages = Math.ceil(total / parseInt(limit));
 
       return {
         status: 'success',
         data: {
-          total: products.length,
+          total,
           page: parseInt(page),
           limit: parseInt(limit),
           totalPages,
-          products: finalProducts,
-          duplicatesRemoved,
+          products,
           filtersApplied: {
-            // ... filtros aplicados ...
+            category,
+            tags,
+            search,
+            brand,
+            minPrice,
+            maxPrice,
+            // sector,
+            sortBy,
+            sortOrder
           }
         }
       };
@@ -328,81 +411,35 @@ class ProductService {
     }
   }
 
-  // Detectar duplicados en la base de datos
-  static async detectDatabaseDuplicates() {
-    return await this.antiDuplicate.detectAllDuplicates();
-  }
-
-  // Obtener producto por ID (sin cambios)
-  static async findById(id) {
-    if (!id) return { status: 'fail', message: 'ID no proporcionado' };
-
-    const product = await ProductRepository.findByIdWithRelations(id);
-    if (!product) {
-      return { status: 'fail', message: 'Producto no encontrado' };
-    }
-
-    return { status: 'success', data: { product } };
-  }
-
-  // Eliminar producto (sin cambios)
-  static async delete(id) {
-    if (!id) return { status: 'fail', message: 'ID no proporcionado' };
-
-    const productExists = await ProductRepository.existsById(id);
-    if (!productExists) {
-      return { status: 'fail', message: 'Producto no encontrado' };
-    }
-
+  // Búsqueda específica por criterios
+  static async searchByCriteria(criteria) {
     try {
-      await ProductRepository.delete(id);
-      return { status: 'success', message: 'Producto eliminado' };
+      const { sector, ...cleanCriteria } = criteria; // Remover sector si viene
+      const products = await ProductRepository.findByCriteria(cleanCriteria);
+
+      return {
+        status: 'success',
+        data: {
+          criteria: cleanCriteria,
+          count: products.length,
+          products
+        }
+      };
     } catch (error) {
-      console.error('Error al eliminar producto:', error);
+      console.error('Error en búsqueda específica:', error);
       return { 
         status: 'error', 
-        message: 'Error al eliminar el producto' 
+        message: 'Error en la búsqueda',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       };
     }
   }
 
-  // Self-Healing URL (sin cambios)
-  static async publicFindByIdAndSlug(id, slug) {
-    if (!id || !slug) {
-      return { 
-        status: 'fail', 
-        message: 'ID o slug no proporcionado' 
-      };
-    }
-
-    const product = await ProductRepository.findByIdWithRelations(id);
-    if (!product) {
-      return { 
-        status: 'fail', 
-        message: 'Producto no encontrado' 
-      };
-    }
-
-    if (product.slug !== slug) {
-      return {
-        redirect: true,
-        correctUrl: `/products/p/${product.id}-${product.slug}`,
-        status: 'success',
-        data: { product }
-      };
-    }
-
-    return { 
-      status: 'success', 
-      data: { product } 
-    };
-  }
-
-  // Productos relacionados (usando sistema anti-duplicados)
+  // Obtener productos relacionados
   static async getRelatedProducts(productId, limit = 4) {
     if (!productId) {
       return { 
-        status: 'fail', 
+        status: 'error', 
         message: 'ID de producto no proporcionado' 
       };
     }
@@ -410,15 +447,12 @@ class ProductService {
     try {
       const relatedProducts = await ProductRepository.getRelatedProducts(productId, limit);
       
-      // Eliminar duplicados usando el sistema
-      const filterResult = this.antiDuplicate.filterDuplicatesFromResults(relatedProducts, 'name', 'categoryId');
-      
       return {
         status: 'success',
         data: {
           productId,
-          relatedProducts: filterResult.filtered,
-          duplicatesRemoved: filterResult.removed
+          relatedProducts,
+          count: relatedProducts.length
         }
       };
     } catch (error) {
@@ -428,6 +462,127 @@ class ProductService {
         message: 'Error al obtener productos relacionados' 
       };
     }
+  }
+
+  // Detectar duplicados en la base de datos (simplificado)
+  static async detectDatabaseDuplicates() {
+    try {
+      const allProducts = await ProductRepository.findAll();
+      
+      const duplicates = [];
+      const seenNames = new Map();
+      
+      for (const product of allProducts) {
+        const key = `${product.name.toLowerCase()}-${product.categoryId}`;
+        
+        if (seenNames.has(key)) {
+          duplicates.push({
+            name: product.name,
+            categoryId: product.categoryId,
+            duplicateIds: [seenNames.get(key), product.id],
+            products: [allProducts.find(p => p.id === seenNames.get(key)), product]
+          });
+        } else {
+          seenNames.set(key, product.id);
+        }
+      }
+      
+      return {
+        status: 'success',
+        data: {
+          totalProducts: allProducts.length,
+          duplicatesFound: duplicates.length,
+          duplicates
+        }
+      };
+    } catch (error) {
+      console.error('Error detectando duplicados:', error);
+      return { 
+        status: 'error', 
+        message: 'Error al detectar duplicados' 
+      };
+    }
+  }
+
+  // 🔍 NUEVO MÉTODO: Generar nombre alternativo sugerido
+  static async generateAlternativeName(name, categoryId, attempt = 1) {
+    const suffixes = ['Nuevo', 'Actualizado', 'Mejorado', 'Pro', 'Plus', '2024', 'Edición Especial'];
+    const suffix = suffixes[Math.min(attempt - 1, suffixes.length - 1)] || `V${attempt}`;
+    
+    const alternativeName = attempt === 1 ? `${name} ${suffix}` : `${name} ${suffix} ${attempt}`;
+    
+    // Verificar si el nombre alternativo también existe
+    try {
+      const exists = await ProductRepository.findDuplicate(alternativeName, categoryId);
+      
+      if (exists && attempt < 10) {
+        return await this.generateAlternativeName(name, categoryId, attempt + 1);
+      }
+    } catch (error) {
+      console.error('Error verificando nombre alternativo:', error);
+    }
+    
+    return alternativeName;
+  }
+
+  // 🔍 NUEVO MÉTODO: Buscar productos similares por nombre
+  static async findSimilarProducts(name, categoryId = null, threshold = 0.7) {
+    try {
+      const allProducts = await ProductRepository.findAll();
+      
+      const similarProducts = allProducts.filter(product => {
+        // Si se especifica categoría, filtrar por ella
+        if (categoryId && product.categoryId !== categoryId) {
+          return false;
+        }
+        
+        // Calcular similitud (implementación simple)
+        const similarity = this.calculateNameSimilarity(name, product.name);
+        return similarity >= threshold;
+      });
+      
+      return {
+        status: 'success',
+        data: {
+          originalName: name,
+          categoryId: categoryId,
+          threshold: threshold,
+          similarProducts: similarProducts.map(p => ({
+            id: p.id,
+            name: p.name,
+            categoryId: p.categoryId,
+            similarity: this.calculateNameSimilarity(name, p.name)
+          }))
+        }
+      };
+    } catch (error) {
+      console.error('Error buscando productos similares:', error);
+      return { 
+        status: 'error', 
+        message: 'Error buscando productos similares' 
+      };
+    }
+  }
+
+  // 🔍 MÉTODO AUXILIAR: Calcular similitud entre nombres
+  static calculateNameSimilarity(str1, str2) {
+    const s1 = str1.toLowerCase().replace(/\s+/g, '');
+    const s2 = str2.toLowerCase().replace(/\s+/g, '');
+    
+    if (s1 === s2) return 1.0;
+    
+    // Método simple: porcentaje de coincidencia de caracteres
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    
+    let matches = 0;
+    for (let i = 0; i < shorter.length; i++) {
+      if (longer.includes(shorter[i])) {
+        matches++;
+      }
+    }
+    
+    return matches / longer.length;
   }
 }
 

@@ -1,110 +1,235 @@
-const ProductRepository = require('../repositories/productRepository');
-const ProductQueryBuilder = require('../builders/productQueryBuilder');
+// controllers/publicProductController.js - VERSIÓN CORREGIDA
+const { Product, Category, Tag, sequelize } = require('../models');
+const { Op } = require('sequelize');
 
 class PublicProductController {
-
-  //Listado público con filtros, paginación y relaciones
   async list(req, res) {
+    console.log('\n🔍 ===== PublicProductController.list =====');
+    console.log('📋 Query params recibidos:', req.query);
+    
     try {
-      // Extraer filtros desde la query
       const {
-        page,
-        limit,
+        page = 1,
+        limit = 10,
         category,
         tags,
         price_min,
         price_max,
         search,
-        brand,
-        model
+        sku
       } = req.query;
 
-      // Convertir tags en array numérico si existen
-      const tagArray = tags ? tags.split(',').map(Number) : null;
+      console.log('🔍 Parámetros procesados:', { page, limit, category });
 
-      // Construir el query dinámico usando el builder
-      const builder = new ProductQueryBuilder()
-        .filterByCategory(category)
-        .filterByTags(tagArray)
-        .filterByPrice(price_min, price_max)
-        .search(search)
-        .filterByBrand(brand)
-        .filterByModel(model)
-        .paginate(page, limit);
-
-      // Obtener la consulta final
-      const query = builder.build();
-
-      // Asegurar que las relaciones category y tags siempre estén presentes
-      if (!query.include.some(i => i.as === 'category')) {
-        query.include.push({
-          model: require('../models').Category,
-          as: 'category'
-        });
-      }
-
-      if (!query.include.some(i => i.as === 'tags')) {
-        query.include.push({
-          model: require('../models').Tag,
-          as: 'tags',
-          through: { attributes: [] } // evitar datos extras de la tabla pivote
-        });
-      }
-
-      // Ejecutar consulta en repositorio
-      const result = await ProductRepository.queryAdvanced(query);
-
-      return res.json({
-        status: 'success',
-        data: {
-          total: result.count,                  // total de productos
-          page: Number(page) || 1,              // página actual
-          limit: Number(limit) || 10,           // límite por página
-          products: result.rows                 // productos encontrados
+      // CONSTRUIR QUERY MANUALMENTE - ELIMINANDO EL BUILDER
+      const where = {};
+      const include = [];
+      
+      // 1. Filtro por categoría
+      if (category) {
+        const categoryId = parseInt(category);
+        if (!isNaN(categoryId)) {
+          where.categoryId = categoryId;  // Filtrar directamente por categoryId
+          console.log(`✅ Filtrando por categoryId: ${categoryId}`);
         }
+      }
+      
+      // 2. Siempre incluir relación con categoría (pero no filtrar aquí)
+      include.push({
+        model: Category,
+        as: 'category',
+        attributes: ['id', 'name', 'slug'],
+        required: false  // LEFT JOIN, no INNER JOIN
       });
-
+      
+      // 3. Incluir tags
+      include.push({
+        model: Tag,
+        as: 'tags',
+        through: { attributes: [] },
+        attributes: ['id', 'name', 'color'],
+        required: false
+      });
+      
+      // 4. Filtro por precio
+      if (price_min || price_max) {
+        where.price = {};
+        if (price_min) where.price[Op.gte] = parseFloat(price_min);
+        if (price_max) where.price[Op.lte] = parseFloat(price_max);
+      }
+      
+      // 5. Búsqueda por texto
+      if (search) {
+        where[Op.or] = [
+          { name: { [Op.like]: `%${search}%` } },
+          { description: { [Op.like]: `%${search}%` } }
+        ];
+      }
+      
+      // 6. Filtro por SKU
+      if (sku) {
+        where.sku = { [Op.like]: `%${sku}%` };
+      }
+      
+      // 7. Stock mínimo
+      where.stock = { [Op.gte]: 0 };
+      
+      // Paginación
+      const pageNum = Math.max(1, parseInt(page) || 1);
+      const limitNum = Math.max(1, parseInt(limit) || 10);
+      const offset = (pageNum - 1) * limitNum;
+      
+      // Construir query final
+      const query = {
+        where,
+        include,
+        limit: limitNum,
+        offset: offset,
+        order: [['createdAt', 'DESC']],
+        distinct: true  // IMPORTANTE para relaciones many-to-many
+      };
+      
+      console.log('🔍 Query final construida manualmente:');
+      console.log('- WHERE:', JSON.stringify(where, null, 2));
+      console.log('- INCLUDE:', include.map(i => i.as).join(', '));
+      console.log('- PAGINACIÓN:', { limit: limitNum, offset, page: pageNum });
+      
+      // EJECUTAR CON findAndCountAll (NO con findAll)
+      console.log('🔍 Ejecutando Product.findAndCountAll...');
+      const result = await Product.findAndCountAll(query);
+      
+      console.log(`📊 RESULTADO: ${result.count} productos encontrados`);
+      console.log(`📊 Productos devueltos: ${result.rows.length}`);
+      
+      // DEBUG: Verificar qué se encontró
+      if (result.rows.length > 0) {
+        console.log('🔍 Primer producto encontrado:');
+        const p = result.rows[0];
+        console.log(`   ID: ${p.id}, Nombre: "${p.name}"`);
+        console.log(`   CategoryId: ${p.categoryId}`);
+        console.log(`   Categoría: ${p.category ? p.category.name : 'null'}`);
+        console.log(`   Tags: ${p.tags ? p.tags.length : 0}`);
+      }
+      
+      // Formatear respuesta
+      const formattedProducts = result.rows.map(product => ({
+        id: product.id,
+        name: product.name,
+        description: product.description || '',
+        price: product.price,
+        stock: product.stock,
+        brand: product.brand || '',
+        images: product.images || [],
+        sku: product.sku || '',
+        slug: product.slug || '',
+        category: product.category ? {
+          id: product.category.id,
+          name: product.category.name,
+          slug: product.category.slug || ''
+        } : null,
+        tags: product.tags ? product.tags.map(tag => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color || '#000000'
+        })) : []
+      }));
+      
+      // Calcular paginación
+      const totalPages = Math.ceil(result.count / limitNum);
+      
+      const response = {
+        success: true,
+        products: formattedProducts,
+        pagination: {
+          total: result.count,
+          page: pageNum,
+          limit: limitNum,
+          totalPages: totalPages
+        },
+        filtersApplied: {
+          category: !!category,
+          tags: false, // Por ahora
+          priceRange: !!(price_min || price_max),
+          search: !!search,
+          sku: !!sku
+        }
+      };
+      
+      console.log(`✅ Enviando ${formattedProducts.length} productos`);
+      return res.json(response);
+      
     } catch (error) {
-      console.error("Error en listado público:", error);
+      console.error("❌ Error en PublicProductController.list:", error.message);
+      console.error("❌ Stack:", error.stack);
+      
       return res.status(500).json({
-        status: 'error',
-        message: 'Error al obtener la lista de productos'
+        success: false,
+        message: 'Error interno al obtener productos',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
-
-  // Detalle público con Self-Healing URL
   async getPublic(req, res) {
     try {
       const { id, slug } = req.params;
 
-      // Buscar producto con sus relaciones (categoría, tags, etc.)
+      console.log(`🔍 PublicProductController.getPublic: ID=${id}, Slug=${slug}`);
+
+      // Buscar producto con relaciones
       const product = await ProductRepository.findByIdWithRelations(id);
 
-      // Si no existe → 404
       if (!product) {
+        console.log(`❌ Producto ID ${id} no encontrado`);
         return res.status(404).json({
-          status: 'fail',
+          success: false,
           message: 'Producto no encontrado'
         });
       }
 
-      // Si el slug no coincide → redirección SEO (301)
-      if (slug !== product.slug) {
+      console.log(`✅ Producto encontrado: "${product.name}" (ID: ${product.id})`);
+
+      // Redirección SEO si el slug no coincide
+      if (slug && slug !== product.slug) {
+        console.log(`🔀 Redirigiendo a slug correcto: ${product.id}-${product.slug}`);
         return res.redirect(301, `/public/products/${product.id}-${product.slug}`);
       }
 
-      // Respuesta correcta con datos
+      // Formatear respuesta
+      const formattedProduct = {
+        id: product.id,
+        name: product.name,
+        description: product.description || '',
+        price: product.price,
+        stock: product.stock,
+        brand: product.brand || '',
+        images: product.images || [],
+        sku: product.sku || '',
+        slug: product.slug || '',
+        category: product.category ? {
+          id: product.category.id,
+          name: product.category.name,
+          slug: product.category.slug || ''
+        } : null,
+        tags: product.tags ? product.tags.map(tag => ({
+          id: tag.id,
+          name: tag.name,
+          color: tag.color || '#000000'
+        })) : []
+      };
+
+      console.log(`✅ Enviando producto ID ${product.id} al frontend`);
+      
       return res.json({
-        status: 'success',
-        data: { product }
+        success: true,
+        product: formattedProduct
       });
 
     } catch (error) {
-      console.error("Error en detalle público:", error);
+      console.error("❌ Error en getPublic:", error.message);
       return res.status(500).json({
-        status: 'error',
-        message: 'Error al obtener el producto'
+        success: false,
+        message: 'Error al obtener el producto',
+        error: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
