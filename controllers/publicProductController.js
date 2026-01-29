@@ -1,4 +1,4 @@
-// controllers/publicProductController.js - VERSIÓN CORREGIDA
+// controllers/publicProductController.js - VERSIÓN FINAL CORREGIDA
 const { Product, Category, Tag, sequelize } = require('../models');
 const { Op } = require('sequelize');
 
@@ -21,7 +21,7 @@ class PublicProductController {
 
       console.log('🔍 Parámetros procesados:', { page, limit, category });
 
-      // CONSTRUIR QUERY MANUALMENTE - ELIMINANDO EL BUILDER
+      // CONSTRUIR QUERY
       const where = {};
       const include = [];
       
@@ -29,25 +29,25 @@ class PublicProductController {
       if (category) {
         const categoryId = parseInt(category);
         if (!isNaN(categoryId)) {
-          where.categoryId = categoryId;  // Filtrar directamente por categoryId
+          where.categoryId = categoryId;
           console.log(`✅ Filtrando por categoryId: ${categoryId}`);
         }
       }
       
-      // 2. Siempre incluir relación con categoría (pero no filtrar aquí)
+      // 2. Incluir categoría (solo id y name)
       include.push({
         model: Category,
         as: 'category',
-        attributes: ['id', 'name', 'slug'],
-        required: false  // LEFT JOIN, no INNER JOIN
+        attributes: ['id', 'name'], // ← SIN slug
+        required: false
       });
       
-      // 3. Incluir tags
+      // 3. Incluir tags (solo id y name)
       include.push({
         model: Tag,
         as: 'tags',
         through: { attributes: [] },
-        attributes: ['id', 'name', 'color'],
+        attributes: ['id', 'name'], // ← SIN color
         required: false
       });
       
@@ -86,32 +86,16 @@ class PublicProductController {
         limit: limitNum,
         offset: offset,
         order: [['createdAt', 'DESC']],
-        distinct: true  // IMPORTANTE para relaciones many-to-many
+        distinct: true
       };
       
-      console.log('🔍 Query final construida manualmente:');
-      console.log('- WHERE:', JSON.stringify(where, null, 2));
-      console.log('- INCLUDE:', include.map(i => i.as).join(', '));
-      console.log('- PAGINACIÓN:', { limit: limitNum, offset, page: pageNum });
-      
-      // EJECUTAR CON findAndCountAll (NO con findAll)
       console.log('🔍 Ejecutando Product.findAndCountAll...');
       const result = await Product.findAndCountAll(query);
       
       console.log(`📊 RESULTADO: ${result.count} productos encontrados`);
       console.log(`📊 Productos devueltos: ${result.rows.length}`);
       
-      // DEBUG: Verificar qué se encontró
-      if (result.rows.length > 0) {
-        console.log('🔍 Primer producto encontrado:');
-        const p = result.rows[0];
-        console.log(`   ID: ${p.id}, Nombre: "${p.name}"`);
-        console.log(`   CategoryId: ${p.categoryId}`);
-        console.log(`   Categoría: ${p.category ? p.category.name : 'null'}`);
-        console.log(`   Tags: ${p.tags ? p.tags.length : 0}`);
-      }
-      
-      // Formatear respuesta
+      // Formatear respuesta (sin campos que no existen)
       const formattedProducts = result.rows.map(product => ({
         id: product.id,
         name: product.name,
@@ -124,13 +108,13 @@ class PublicProductController {
         slug: product.slug || '',
         category: product.category ? {
           id: product.category.id,
-          name: product.category.name,
-          slug: product.category.slug || ''
+          name: product.category.name
+          // SIN slug
         } : null,
         tags: product.tags ? product.tags.map(tag => ({
           id: tag.id,
-          name: tag.name,
-          color: tag.color || '#000000'
+          name: tag.name
+          // SIN color
         })) : []
       }));
       
@@ -169,14 +153,30 @@ class PublicProductController {
       });
     }
   }
+  
   async getPublic(req, res) {
     try {
       const { id, slug } = req.params;
 
       console.log(`🔍 PublicProductController.getPublic: ID=${id}, Slug=${slug}`);
 
-      // Buscar producto con relaciones
-      const product = await ProductRepository.findByIdWithRelations(id);
+      // Buscar producto con relaciones (asegúrate que no incluya campos inexistentes)
+      const product = await Product.findOne({
+        where: { id },
+        include: [
+          {
+            model: Category,
+            as: 'category',
+            attributes: ['id', 'name'] // SIN slug
+          },
+          {
+            model: Tag,
+            as: 'tags',
+            through: { attributes: [] },
+            attributes: ['id', 'name'] // SIN color
+          }
+        ]
+      });
 
       if (!product) {
         console.log(`❌ Producto ID ${id} no encontrado`);
@@ -194,7 +194,7 @@ class PublicProductController {
         return res.redirect(301, `/public/products/${product.id}-${product.slug}`);
       }
 
-      // Formatear respuesta
+      // Formatear respuesta (sin campos que no existen)
       const formattedProduct = {
         id: product.id,
         name: product.name,
@@ -207,13 +207,13 @@ class PublicProductController {
         slug: product.slug || '',
         category: product.category ? {
           id: product.category.id,
-          name: product.category.name,
-          slug: product.category.slug || ''
+          name: product.category.name
+          // SIN slug
         } : null,
         tags: product.tags ? product.tags.map(tag => ({
           id: tag.id,
-          name: tag.name,
-          color: tag.color || '#000000'
+          name: tag.name
+          // SIN color
         })) : []
       };
 

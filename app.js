@@ -10,11 +10,10 @@ const indexRouter = require('./routes/index');
 const usersRouter = require('./routes/users');
 const authRouter = require('./routes/auth');
 
-// NUEVAS RUTAS para categorías, productos y tags
+// NUEVAS RUTAS para categorías y productos
 const categoryRouter = require('./routes/categories');
 const productRouter = require('./routes/products');
 const publicProductRouter = require('./routes/publicProducts');
-const tagRouter = require('./routes/tags');
 
 // Configuración de Swagger
 const setupSwagger = require('./swagger.js');
@@ -29,7 +28,7 @@ app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cors({
-  origin: 'http://localhost:5173', // O usa '*' para desarrollo
+  origin: 'http://localhost:5173',
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -44,10 +43,9 @@ app.use('/auth', authRouter);
 app.use('/users', usersRouter);
 
 // NUEVAS RUTAS DEL MÓDULO DE PRODUCTOS
-app.use('/categories', categoryRouter);        // CRUD categorías
-app.use('/tags', tagRouter);                   // CRUD tags
-app.use('/products', productRouter);           // CRUD productos (privado)
-app.use('/public/products', publicProductRouter); // Productos 
+app.use('/categories', categoryRouter);
+app.use('/products', productRouter);
+app.use('/public/products', publicProductRouter);
 
 // Endpoint de información
 app.get('/about', (req, res) => {
@@ -64,16 +62,16 @@ app.get('/about', (req, res) => {
 // Endpoint de verificación rápida del servidor
 app.get('/ping', (req, res) => res.status(200).end());
 
-const { sequelize, User, Category, Product, Tag } = require('./models');
+const { sequelize, User, Category, Product } = require('./models');
 
 // Función de inicialización DIRECTAMENTE en app.js
 async function initializeDatabase() {
   try {
-    console.log('\n🚀 Inicializando base de datos...');
+    console.log('Inicializando base de datos...');
     
     // 1. Sincronizar tablas
     await sequelize.sync({ alter: false });
-    console.log('✅ Tablas sincronizadas');
+    console.log('Tablas sincronizadas');
     
     // 2. Crear usuario admin
     await createAdminUser();
@@ -82,27 +80,27 @@ async function initializeDatabase() {
     const productsCount = await Product.count();
     if (productsCount === 0) {
       await createSampleData();
-      console.log('✅ Datos de prueba creados');
+      console.log('Datos de prueba creados');
     } else {
-      console.log(`✅ Ya existen ${productsCount} productos, omitiendo datos de prueba`);
+      console.log(`Ya existen ${productsCount} productos, omitiendo datos de prueba`);
     }
     
     // 4. Mostrar resumen
-    console.log('\n📊 RESUMEN INICIAL:');
-    const modelNames = ['User', 'Category', 'Product', 'Tag'];
+    console.log('RESUMEN INICIAL:');
+    const modelNames = ['User', 'Category', 'Product'];
     for (const modelName of modelNames) {
       const model = sequelize.models[modelName];
       if (model) {
         const count = await model.count();
-        console.log(`   ${modelName.padEnd(15)}: ${count} registros`);
+        console.log(`${modelName.padEnd(15)}: ${count} registros`);
       }
     }
     
-    console.log('\n🎉 Base de datos inicializada correctamente!');
+    console.log('Base de datos inicializada correctamente!');
     return true;
     
   } catch (error) {
-    console.error('❌ Error en inicialización:', error.message);
+    console.error('Error en inicialización:', error.message);
     return false;
   }
 }
@@ -110,7 +108,7 @@ async function initializeDatabase() {
 // Función para crear usuario admin
 async function createAdminUser() {
   try {
-    console.log('👑 Verificando/creando usuario administrador...');
+    console.log('Verificando/creando usuario administrador...');
     
     const adminEmail = 'admin@test.com';
     const adminPassword = '123456';
@@ -118,14 +116,14 @@ async function createAdminUser() {
     let adminUser = await User.findOne({ where: { email: adminEmail } });
     
     if (adminUser) {
-      console.log(`✅ Usuario admin ya existe (ID: ${adminUser.id})`);
+      console.log(`Usuario admin ya existe (ID: ${adminUser.id})`);
       
       // Asegurar que sea admin
       if (adminUser.role !== 'admin') {
         adminUser.role = 'admin';
         adminUser.active = true;
         await adminUser.save();
-        console.log('🔄 Usuario actualizado a rol admin');
+        console.log('Usuario actualizado a rol admin');
       }
       
     } else {
@@ -137,17 +135,17 @@ async function createAdminUser() {
         active: true
       });
       
-      console.log(`✅ Usuario admin creado (ID: ${adminUser.id})`);
+      console.log(`Usuario admin creado (ID: ${adminUser.id})`);
     }
     
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log('⚠️  ¡Cambia esta contraseña en producción!\n');
+    console.log(`Email: ${adminEmail}`);
+    console.log(`Password: ${adminPassword}`);
+    console.log('¡Cambia esta contraseña en producción!');
     
     return adminUser;
     
   } catch (error) {
-    console.error('❌ Error creando usuario admin:', error.message);
+    console.error('Error creando usuario admin:', error.message);
     throw error;
   }
 }
@@ -155,7 +153,7 @@ async function createAdminUser() {
 // Función para datos de prueba
 async function createSampleData() {
   try {
-    console.log('🎲 Creando datos de prueba...');
+    console.log('Creando datos de prueba...');
     
     // Crear categorías
     const categories = await Category.bulkCreate([
@@ -165,17 +163,7 @@ async function createSampleData() {
       { name: 'Deportes', description: 'Artículos deportivos' }
     ], { ignoreDuplicates: true });
     
-    console.log(`✅ ${categories.length} categorías creadas`);
-    
-    // Crear tags
-    const tags = await Tag.bulkCreate([
-      { name: 'Nuevo', color: '#FF0000' },
-      { name: 'Oferta', color: '#00FF00' },
-      { name: 'Popular', color: '#0000FF' },
-      { name: 'Limitado', color: '#FFA500' }
-    ], { ignoreDuplicates: true });
-    
-    console.log(`✅ ${tags.length} tags creados`);
+    console.log(`${categories.length} categorías creadas`);
     
     // Crear productos
     const products = await Product.bulkCreate([
@@ -197,12 +185,12 @@ async function createSampleData() {
       }
     ]);
     
-    console.log(`✅ ${products.length} productos creados`);
+    console.log(`${products.length} productos creados`);
     
     return true;
     
   } catch (error) {
-    console.error('❌ Error creando datos de prueba:', error.message);
+    console.error('Error creando datos de prueba:', error.message);
     throw error;
   }
 }
@@ -212,16 +200,16 @@ if (process.env.NODE_ENV !== 'test') {
   (async () => {
     try {
       await sequelize.authenticate();
-      console.log('✅ Conexión a SQLite establecida');
+      console.log('Conexión a SQLite establecida');
       
       // Solo inicializar en desarrollo
       if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
         await initializeDatabase();
       }
       
-      console.log('🎯 Aplicación lista para recibir peticiones');
+      console.log('Aplicación lista para recibir peticiones');
     } catch (error) {
-      console.error('❌ Error de base de datos:', error.message);
+      console.error('Error de base de datos:', error.message);
     }
   })();
 }
